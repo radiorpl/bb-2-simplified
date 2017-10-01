@@ -11,6 +11,7 @@ This version has delay and modulation (chorus + flanger)
 #include <SPI.h>
 #include <SD.h>
 #include <SerialFlash.h>
+#include <Encoder.h>
 
 // GUItool: begin automatically generated code
 AudioPlaySdWav           playSdWav2;     //xy=88,160
@@ -71,18 +72,36 @@ AudioControlSGTL5000     sgtl5000_1;     //xy=1075,409
 
 // Number of samples to average with each ADC reading.
 const int ANALOG_READ_AVERAGING = 32;
-int track_1_level;
-int track_2_level;
-int last_track_1_level;
-int last_track_2_level;
+int track_1_level = 1;
+int track_2_level = 1;
+int last_track_1_level = 0;
+int last_track_2_level = 0;
+int delay_setting = 0;
+int last_delay_setting = -1; // Last position of the delay knob
+int fx_param_select = 0;
+int enc_debounce = 250;
+int encoderPosition [] = {0, 0, 0};      // current state of the encoders
+int lastEncoderPosition[] = {0, 0, 0};     // previous state of the buttons
 
 // Values for the delay
-//                   Initial   1    2    3    4    5
-const int delay_0[] = {   0, 107, 143, 214, 286, 425 };
-const int delay_1[] = {   0,  54,  72, 107, 143, 213 };
-const int delay_2[] = {   0,  72, 107, 143, 213, 286 };
-const int delay_3[] = {   0,  72, 107, 143, 213, 286 };
+//                   	 	 Initial   	1    	2    	3    	4   	 5
+const int delay_0[] = 		{   0, 		107, 	143, 	214, 	286, 	425 	};
+const int delay_1[] = 		{   0,  	54,  	72, 	107, 	143, 	213 	};
+const int delay_2[] = 		{   0,  	72, 	107, 	143, 	213, 	286 	};
+const int delay_3[] = 		{   0,  	143, 	214, 	286, 	107, 	143 	};
+const int delay_send_1[] =  {   0,  	250, 	400,	650, 	850,	1023	};
+const int delay_send_2[] =  {   0,  	250, 	400,	650, 	850,	1023	};
+const int delay_fb[] =    	{   0,  	250, 	400,	650, 	850,	1023	};
 
+//millisecond counters
+elapsedMillis m_debounce1;
+elapsedMillis m_debounce2;
+elapsedMillis m_debounce3;
+Encoder encoder0(25, 24);
+Encoder encoder1(27, 26);
+Encoder encoder2(29, 28);
+
+//=================Setup================
 void setup() {
 	AudioMemory(160);	    
     Serial.begin( 9600 );
@@ -90,7 +109,6 @@ void setup() {
     SPI.setSCK(SDCARD_SCK_PIN);
      if (!(SD.begin(SDCARD_CS_PIN))) {              //To do: change to start in different mode when sd missing
       while (1) {
- 		    btn1.onPress( encBtn1, encBtn1.EVT_BTN_1 );
         Serial.println("Unable to access the SD card");   
       }   
     }
@@ -99,14 +117,34 @@ void setup() {
     mixer1.gain(1, 0.5);
     mixer2.gain(0, 0.5);	//wav2
     mixer2.gain(1, 0.5);
+    mixer3.gain(0, 0.5); 	//wav sends
+	mixer3.gain(1, 0.5);
+	mixer3.gain(2, 0.25);	//fb sends
+	mixer3.gain(3, 0.25);
+	mixer4.gain(0, 0.25);
+	mixer4.gain(1, 0.25);
+	mixer5.gain(0, 0.5);	//mixer to delay
+	mixer5.gain(1, 0.5);
 	mixer6.gain(0, 0.5);	//mix 1 and 2
-	mixer6.gain(0, 0.5);
+	mixer6.gain(1, 0.5);
+	mixer7.gain(0, 0.25);	//delay outs
+	mixer7.gain(1, 0.25);
+	mixer7.gain(2, 0.25);
+	mixer7.gain(3, 0.25);
+	mixer8.gain(0, 1.0);	//unnecessary
+	mixer9.gain(0, 0.25);	//fx mix
+	mixer9.gain(1, 0.25);
+	mixer9.gain(2, 0.25);
+	mixer10.gain(0, 0.0);	//send to modulation
+	mixer10.gain(1, 0.0);
 	mixer11.gain(0, 0.5);	//mix with effects
+	mixer11.gain(1, 0.5);	//mix with effects
     sgtl5000_1.enable();
-    sgtl5000_1.volume(0.5);	   
+    sgtl5000_1.volume(0.5);	   //master volume
 }
-
-void SetMasterVolume(int level) {
+//=====================Functions================
+//Master Vol 
+void setMasterVolume(int level) {
   // read the knob position for master volume(analog input A2)
   float vol = (float)level / 1280.0;
   sgtl5000_1.volume(vol);
@@ -114,45 +152,142 @@ void SetMasterVolume(int level) {
   //Serial.println(vol);
 }
 
-void SetCrossfade(int mixKnob) {
+//Cross fade between 2 wavs with pot
+void setCrossfade(int mixKnob) {
   // crossfader/mix both wavs
   // knob = 0 to 1023
   float gain1 = (float)mixKnob / 1023.0;
   float gain2 = 1.0 - gain1;
-  mixer6.gain(0, gain1);
-  mixer6.gain(1, gain2);
+  mixer6.gain(0, gain2);
+  mixer6.gain(1, gain1);
 }
 
-void SetDelayTime(int range) {
-  if ((m_lastRange != range) && (range >= 0) && (range <= 5)) {
-    m_lastRange = range;
-    delay1.delay(0, delay_0[range]);
-    delay1.delay(1, delay_1[range]);
-    delay1.delay(2, delay_2[range]);
-    delay1.delay(3, delay_3[range]);
+//Set delay times based on values in array                       !!!!!!!!!!!!!!!
+void setDelayTime(int delay_setting) {
+  if ((last_delay_setting != delay_setting) && (delay_setting >= 0) && (delay_setting <= 5)) {
+    last_delay_setting = delay_setting;
+	Serial.print("delay setting ");
+	Serial.println(delay_setting);
+    delay1.delay(0, delay_0[delay_setting]);
+    //delay1.delay(1, delay_1[delay_setting]);
+    //delay1.delay(2, delay_2[delay_setting]);
+    //delay1.delay(3, delay_3[delay_setting]);
   }
 }
 
-void SetWav1Gain(int level) {
+//Send wav 1 to delay
+void setDelaySendGain1(int level) {
   // wav 1 effect send
-  float gain = (float)level / 1023.0;
-  mixer2.gain(0, gain);
+  float gain = (float)delay_send_1[level] / 1023.0;
+  mixer3.gain(0, gain);
 }
 
+//Send wav 2 to delay
+void setDelaySendGain2(int level) {
+  // wav 1 effect send
+  float gain = (float)delay_send_2[level] / 1023.0;
+  mixer3.gain(1, gain);
+}
+
+//delay fb
+void setDelayFb(int level) {
+  // wav 1 effect send
+  float gain = (float)delay_fb[level] / 1023.0;
+  mixer5.gain(0, gain);
+  mixer5.gain(1, gain);
+}
+
+//Encoder - wav player 1 track selection
+    void checkEncoder0() {
+    //read encoder, if different, increment up to limits
+	if (track_1_level > 4) {
+		track_1_level = 5;
+	}
+	if (track_1_level < 2) {
+		track_1_level = 1;
+	}
+	if (m_debounce1 > enc_debounce) {
+		encoderPosition[0] = encoder0.read();
+		m_debounce1 = 0;
+		//if (encoderPosition[0] != lastEncoderPosition[0]) {
+		//	m_debounce1 = 0;
+		//}
+	    if (encoderPosition[0] > lastEncoderPosition[0]) {
+			track_1_level++;
+			lastEncoderPosition[0] = encoderPosition[0];
+	    }
+	    else if (encoderPosition[0] < lastEncoderPosition[0]) {
+			track_1_level--;
+			lastEncoderPosition[0] = encoderPosition[0];
+		}
+	}
+}
+//Encoder - wav player 2 track selection
+    void checkEncoder1() {
+    //read encoder, if different, increment up to limits
+	if (track_2_level > 4) {
+		track_2_level = 5;
+	}
+	if (track_2_level < 2) {
+		track_2_level = 1;
+	}
+	if (m_debounce2 > enc_debounce) {
+		encoderPosition[1] = encoder1.read();
+		m_debounce2 = 0;
+		//if (encoderPosition[0] != lastEncoderPosition[0]) {
+		//	m_debounce1 = 0;
+		//}
+	    if (encoderPosition[1] > lastEncoderPosition[1]) {
+			track_2_level++;
+			lastEncoderPosition[1] = encoderPosition[1];
+	    }
+	    else if (encoderPosition[1] < lastEncoderPosition[1]) {
+			track_2_level--;
+			lastEncoderPosition[1] = encoderPosition[1];
+		}
+	}
+}
+
+//Encoder - fx parameter
+void checkEncoder2() {
+	//read encoder, if different, increment up or down to limits
+	encoderPosition[2] = encoder2.read();
+	if ( encoderPosition[2] > 4 ) {
+		encoder1.write(4);
+	}
+	if ( encoderPosition[2] < 0 ) {
+		encoder1.write(0);
+	}
+	if ( encoderPosition[2] > lastEncoderPosition[2] && encoderPosition[2] < 5 && m_debounce3 > enc_debounce ) {
+		delay_setting += 1;
+		lastEncoderPosition[2] = encoderPosition[2];
+		m_debounce3 = 0;
+	}
+	else if ( encoderPosition[2] < lastEncoderPosition[2] && encoderPosition[2] > -1 && m_debounce3 > enc_debounce ) {
+		delay_setting -= 1;
+		lastEncoderPosition[2] = encoderPosition[2];
+		m_debounce3 = 0;	
+	}
+}
+
+//======================LOOP=======================
 void loop() {
 //play wav 1
+	//track_1_level = encoderPosition[0];
 	if ( (playSdWav1.isPlaying() == false) || (track_1_level != last_track_1_level) ) {
 		if (track_1_level == 1) {
 			playSdWav1.play("DRONE1.WAV"); //play wav file
 	      	delay(10); // wait for library to parse WAV info
 			last_track_1_level = track_1_level;
-	      	Serial.println("DRONE1.WAV");
+	      	Serial.println("PLAYER 1");
+			Serial.println("DRONE1.WAV");
 	    }
 		else if (track_1_level == 2) {
 			playSdWav1.play("DRONE2.WAV"); //play wav file
 	      	delay(10); // wait for library to parse WAV info
 			last_track_1_level = track_1_level;
-	      	Serial.println("DRONE2.WAV");
+	      	Serial.println("PLAYER 1");
+			Serial.println("DRONE2.WAV");
 	    }
 		else if (track_1_level == 3) {
 			playSdWav1.play("DRONE3.WAV"); //play wav file
@@ -180,13 +315,15 @@ void loop() {
 			playSdWav2.play("DRONE1.WAV"); //play wav file
 	      	delay(10); // wait for library to parse WAV info
 			last_track_2_level = track_2_level;
-	      	Serial.println("DRONE1.WAV");
+	      	Serial.println("PLAYER 2");
+			Serial.println("DRONE1.WAV");
 	    }
 		else if (track_2_level == 2) {
 			playSdWav2.play("DRONE2.WAV"); //play wav file
 	      	delay(10); // wait for library to parse WAV info
 			last_track_2_level = track_2_level;
-	      	Serial.println("DRONE2.WAV");
+	      	Serial.println("PLAYER 2");
+			Serial.println("DRONE2.WAV");
 	    }
 		else if (track_2_level == 3) {
 			playSdWav2.play("DRONE3.WAV"); //play wav file
@@ -207,4 +344,14 @@ void loop() {
 	      	Serial.println("DRONE5.WAV");
 	    }
 	}
+	
+	setMasterVolume(analogRead(2));
+	setCrossfade(analogRead(3));
+	checkEncoder0();
+	checkEncoder1();
+	//checkEncoder2();
+	//setDelayTime(delay_setting);
+	//setDelaySendGain1(delay_setting);
+	//setDelaySendGain2(delay_setting);
+		
 }

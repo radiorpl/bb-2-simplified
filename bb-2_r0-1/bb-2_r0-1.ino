@@ -79,8 +79,8 @@ int enc_debounce = 300;
 int encoderPosition [] = {0, 0, 0};      // current state of the encoders
 int lastEncoderPosition[] = {0, 0, 0};     // previous state of the buttons
 
-//fb 650-900, mix 650-1023
 
+//fb 650-900, mix 650-1023
 //1/8=425, 1/8trip=285, 
 //dot1/16=321 1/16=214, 1/16trip=142, 
 //dot1/32=160, 1/32=107, 1/32trip=71, 

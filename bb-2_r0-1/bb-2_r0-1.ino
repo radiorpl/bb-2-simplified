@@ -68,7 +68,7 @@ AudioControlSGTL5000     sgtl5000_1;     //xy=1040,292
 #define FLANGE_DELAY_LENGTH (16*AUDIO_BLOCK_SAMPLES)
 // Allocate the delay lines for left and right channels
 short flange_length[FLANGE_DELAY_LENGTH];
-int offset = FLANGE_DELAY_LENGTH/offset_div;
+int offset = FLANGE_DELAY_LENGTH/4;
 int depth = FLANGE_DELAY_LENGTH/4;
 double rate = .5;
 //chorus stuff
@@ -90,7 +90,6 @@ int fx_param_select = 0;
 int enc_debounce = 300;
 int encoderPosition [] = {0, 0, 0};      // current state of the encoders
 int lastEncoderPosition[] = {0, 0, 0};     // previous state of the buttons
-int offset_div = 4;
 
 //delay notes:
 //fb 650-900, mix 650-1023

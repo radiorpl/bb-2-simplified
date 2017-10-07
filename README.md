@@ -3,3 +3,4 @@ scaling bb-2 back to single source file after ditching display and multi paramet
 r0-0 - delay
 r0-1 - modulation flanger/chorus
 r0-2 - ring modulator
+r0-3 - modulation with other wave forms

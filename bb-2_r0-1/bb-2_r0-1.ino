@@ -65,7 +65,7 @@ AudioControlSGTL5000     sgtl5000_1;     //xy=1040,292
 
 //flanger stuff
 // Number of samples in each delay line
-#define FLANGE_DELAY_LENGTH (16*AUDIO_BLOCK_SAMPLES)
+#define FLANGE_DELAY_LENGTH (8*AUDIO_BLOCK_SAMPLES)
 // Allocate the delay lines for left and right channels
 short flange_length[FLANGE_DELAY_LENGTH];
 int offset = FLANGE_DELAY_LENGTH/4;
@@ -100,17 +100,18 @@ int lastEncoderPosition[] = {0, 0, 0};     // previous state of the buttons
 //1/128= 27
 
 // Values for the delay
-//                   	 	 Initial   	1    	2    	3    	4   	 5		6		7		8		9		10		11
-const int delay_0[] = 		{   0,    	214, 	107, 	54, 	26, 	35,	 	71,		142,	285,	425,	321,	160		};
-const int delay_1[] = 		{   0,  	0,  	0,  	0,  	0,  	0,  	54,  	285,  	425,  	425,  	425,  	214		};
-const int delay_2[] = 		{   0,  	0,  	0,  	0,  	0,  	0, 		0,  	0,  	214,  	160,  	80,  	80  	};
-const int delay_3[] = 		{   0,  	0,  	0,  	0,  	0,  	0, 		0,  	0,  	0,  	107,  	107,  	107		};
-const int delay_send_1[] =  {   0,  	1023, 	1023,	1023, 	1023,	1023,	1023, 	1023,	1023, 	1023,	1023,	1023	};
-const int delay_send_2[] =  {   0,  	1023, 	1023,	1023, 	1023,	1023,	1023, 	1023,	1023, 	1023,	1023,	1023 	};
-const int delay_fb[] =    	{   0,  	650, 	650,	650, 	650,	650,	650,  	700, 	700,	900, 	800,	800		};
-const int fx_mix[] =		{   0,  	650, 	650,	550, 	550,	550,	650, 	650,	700, 	750,	650,    750		};
-const int idx_div[] =		{   0,  	650, 	650,	550, 	550,	550,	650, 	650,	700, 	750,	650,    750		};
-
+//                   	 	 	Initial   	1    	2    	3    	4   	 5		6		7		8		9		10		11
+const int delay_0[] = 			{   0,    	214, 	107, 	54, 	26, 	35,	 	71,		142,	285,	425,	321,	160		};
+const int delay_1[] = 			{   0,  	0,  	0,  	0,  	0,  	0,  	54,  	285,  	425,  	425,  	425,  	214		};
+const int delay_2[] = 			{   0,  	0,  	0,  	0,  	0,  	0, 		0,  	0,  	214,  	160,  	80,  	80  	};
+const int delay_3[] = 			{   0,  	0,  	0,  	0,  	0,  	0, 		0,  	0,  	0,  	107,  	107,  	107		};
+const int delay_send_1[] =  	{   0,  	1023, 	1023,	1023, 	1023,	1023,	1023, 	1023,	1023, 	1023,	1023,	1023	};
+const int delay_send_2[] =  	{   0,  	1023, 	1023,	1023, 	1023,	1023,	1023, 	1023,	1023, 	1023,	1023,	1023 	};
+const int delay_fb[] =    		{   0,  	650, 	650,	650, 	650,	650,	650,  	700, 	700,	900, 	800,	800		};
+const int fx_mix[] =			{   0,  	650, 	650,	550, 	550,	550,	650, 	650,	700, 	750,	650,    750		};
+const int offset_divider[] = 	{   2,  	3, 		4,		6, 		8,		10,		12, 	14,		16, 	18,		20,    	24		};
+const int depth_divider[] = 	{   1,  	2, 		4,		6, 		8,		10,		12, 	14,		16, 	18,		20,    	24		};
+const double rate_divider[] = 	{	0.01,	0.05,	0.1,	1,		5,		10, 	20,		30,		50,		70,		100,	150		};
 //millisecond counters for encoder debouncing
 elapsedMillis m_debounce1;
 elapsedMillis m_debounce2;
@@ -141,8 +142,8 @@ void setup() {
 	mixer4.gain(1, 0.5);
 	mixer5.gain(0, 0.5);	//mix 2 wavs
 	mixer5.gain(1, 0.5);
-	mixer6.gain(0, 0.5);	//clean-fx mix
-	mixer6.gain(1, 0.5);
+	mixer6.gain(0, 0.2);	//clean-fx mix
+	mixer6.gain(1, 0.8);
     sgtl5000_1.enable();
     sgtl5000_1.volume(0.5);	   //master volume
 	//setMod(0);
@@ -172,10 +173,12 @@ void setCrossfade(int mixKnob) {
 }
 
 void setMod(int delay_setting) {
+	int offset_new = FLANGE_DELAY_LENGTH/offset_divider[delay_setting];
 	if ((last_delay_setting != delay_setting) && (delay_setting >= 0) && (delay_setting <= 11)) {
 	    last_delay_setting = delay_setting;
 		Serial.print("delay setting ");
 		Serial.println(delay_setting);
+		flange1.voices(offset_new, depth, rate);	//change a parameter in flanger
 	}
 }
 
@@ -338,6 +341,6 @@ void loop() {
 	checkEncoder1();
 	checkEncoder2();
 	//effect
-	//setMod(delay_setting);
+	setMod(delay_setting);
 		
 }

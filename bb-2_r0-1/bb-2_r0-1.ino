@@ -20,54 +20,66 @@ This version has delay and modulation (chorus + flanger)
 #include <SD.h>
 #include <SerialFlash.h>
 
+#include <Audio.h>
+#include <Wire.h>
+#include <SPI.h>
+#include <SD.h>
+#include <SerialFlash.h>
+
 // GUItool: begin automatically generated code
-AudioPlaySdWav           playSdWav2;     //xy=88,160
-AudioPlaySdWav           playSdWav1;     //xy=89,66
-AudioEffectDelay         delay1;         //xy=195,357
-AudioMixer4              mixer1;         //xy=238,84
-AudioMixer4              mixer2;         //xy=238,169
-AudioMixer4              mixer7;         //xy=490,355
-AudioMixer4              mixer6;         //xy=491,255
-AudioMixer4              mixer3;         //xy=495,35
-AudioMixer4              mixer4;         //xy=505,109
-AudioMixer4              mixer5;         //xy=653,69
-AudioMixer4              mixer8;        //xy=663,306
-AudioOutputI2S           i2s1;           //xy=811,308
-AudioConnection          patchCord1(playSdWav2, 0, mixer2, 0);
-AudioConnection          patchCord2(playSdWav2, 1, mixer2, 1);
-AudioConnection          patchCord3(playSdWav1, 0, mixer1, 0);
-AudioConnection          patchCord4(playSdWav1, 1, mixer1, 1);
-AudioConnection          patchCord5(delay1, 0, mixer7, 0);
-AudioConnection          patchCord6(delay1, 0, mixer4, 0);
-AudioConnection          patchCord7(delay1, 1, mixer7, 1);
-AudioConnection          patchCord8(delay1, 1, mixer4, 1);
-AudioConnection          patchCord9(delay1, 2, mixer7, 2);
-AudioConnection          patchCord10(delay1, 2, mixer4, 2);
-AudioConnection          patchCord11(delay1, 3, mixer7, 3);
-AudioConnection          patchCord12(delay1, 3, mixer4, 3);
-AudioConnection          patchCord13(mixer1, 0, mixer3, 0);
-AudioConnection          patchCord14(mixer1, 0, mixer6, 0);
-AudioConnection          patchCord15(mixer2, 0, mixer3, 1);
-AudioConnection          patchCord16(mixer2, 0, mixer6, 1);
-AudioConnection          patchCord17(mixer7, 0, mixer8, 1);
-AudioConnection          patchCord18(mixer6, 0, mixer8, 0);
-AudioConnection          patchCord19(mixer3, 0, mixer5, 0);
-AudioConnection          patchCord20(mixer4, 0, mixer5, 1);
-AudioConnection          patchCord21(mixer5, delay1);
-AudioConnection          patchCord22(mixer8, 0, i2s1, 0);
-AudioConnection          patchCord23(mixer8, 0, i2s1, 1);
-AudioControlSGTL5000     sgtl5000_1;     //xy=808,388
+AudioPlaySdWav           playSdWav1;     //xy=236,138
+AudioPlaySdWav           playSdWav2;     //xy=238,232
+AudioMixer4              mixer1;         //xy=375,153
+AudioMixer4              mixer2;         //xy=386,243
+AudioMixer4              mixer5;         //xy=556,146
+AudioMixer4              mixer3;         //xy=559,244
+AudioEffectFlange        flange1;        //xy=705,279
+AudioEffectChorus        chorus1;        //xy=710,233
+AudioMixer4              mixer4;         //xy=832,261
+AudioMixer4              mixer6;         //xy=965,196
+AudioOutputI2S           i2s1;           //xy=1102,192
+AudioConnection          patchCord1(playSdWav1, 0, mixer1, 0);
+AudioConnection          patchCord2(playSdWav1, 1, mixer1, 1);
+AudioConnection          patchCord3(playSdWav2, 0, mixer2, 0);
+AudioConnection          patchCord4(playSdWav2, 1, mixer2, 1);
+AudioConnection          patchCord5(mixer1, 0, mixer3, 0);
+AudioConnection          patchCord6(mixer1, 0, mixer5, 0);
+AudioConnection          patchCord7(mixer2, 0, mixer3, 1);
+AudioConnection          patchCord8(mixer2, 0, mixer5, 1);
+AudioConnection          patchCord9(mixer5, 0, mixer6, 0);
+AudioConnection          patchCord10(mixer3, chorus1);
+AudioConnection          patchCord11(mixer3, flange1);
+AudioConnection          patchCord12(flange1, 0, mixer4, 1);
+AudioConnection          patchCord13(chorus1, 0, mixer4, 0);
+AudioConnection          patchCord14(mixer4, 0, mixer6, 1);
+AudioConnection          patchCord15(mixer6, 0, i2s1, 0);
+AudioConnection          patchCord16(mixer6, 0, i2s1, 1);
+AudioControlSGTL5000     sgtl5000_1;     //xy=1040,292
 // GUItool: end automatically generated code
 
-// GUItool: end automatically generated code
 
 // Use these with the Teensy Audio Shield
 #define SDCARD_CS_PIN    10
 #define SDCARD_MOSI_PIN  7
 #define SDCARD_SCK_PIN   14
 
-// Number of samples to average with each ADC reading.
-const int ANALOG_READ_AVERAGING = 32;
+//flanger stuff
+// Number of samples in each delay line
+#define FLANGE_DELAY_LENGTH (16*AUDIO_BLOCK_SAMPLES)
+// Allocate the delay lines for left and right channels
+short flange_length[FLANGE_DELAY_LENGTH];
+int offset = FLANGE_DELAY_LENGTH/offset_div;
+int depth = FLANGE_DELAY_LENGTH/4;
+double rate = .5;
+//chorus stuff
+// Number of samples in each delay line
+#define CHORUS_DELAY_LENGTH (16*AUDIO_BLOCK_SAMPLES)
+// Allocate the delay lines for left and right channels
+short chorus_length[CHORUS_DELAY_LENGTH];
+int n_chorus = 3;
+
+//variables
+const int ANALOG_READ_AVERAGING = 32;	// Number of samples to average with each ADC reading.
 int track_1_level = 1;
 int track_2_level = 1;
 int last_track_1_level = 0;
@@ -78,8 +90,9 @@ int fx_param_select = 0;
 int enc_debounce = 300;
 int encoderPosition [] = {0, 0, 0};      // current state of the encoders
 int lastEncoderPosition[] = {0, 0, 0};     // previous state of the buttons
+int offset_div = 4;
 
-
+//delay notes:
 //fb 650-900, mix 650-1023
 //1/8=425, 1/8trip=285, 
 //dot1/16=321 1/16=214, 1/16trip=142, 
@@ -97,8 +110,9 @@ const int delay_send_1[] =  {   0,  	1023, 	1023,	1023, 	1023,	1023,	1023, 	1023
 const int delay_send_2[] =  {   0,  	1023, 	1023,	1023, 	1023,	1023,	1023, 	1023,	1023, 	1023,	1023,	1023 	};
 const int delay_fb[] =    	{   0,  	650, 	650,	650, 	650,	650,	650,  	700, 	700,	900, 	800,	800		};
 const int fx_mix[] =		{   0,  	650, 	650,	550, 	550,	550,	650, 	650,	700, 	750,	650,    750		};
+const int idx_div[] =		{   0,  	650, 	650,	550, 	550,	550,	650, 	650,	700, 	750,	650,    750		};
 
-//millisecond counters
+//millisecond counters for encoder debouncing
 elapsedMillis m_debounce1;
 elapsedMillis m_debounce2;
 elapsedMillis m_debounce3;
@@ -122,25 +136,19 @@ void setup() {
     mixer1.gain(1, 0.5);
     mixer2.gain(0, 0.5);	//wav2
     mixer2.gain(1, 0.5);
-    mixer3.gain(0, 0.5); 	//wav sends
-	mixer3.gain(1, 0.5);
-	mixer4.gain(0, 0.25);	//fb sends
-	mixer4.gain(1, 0.25);
-	mixer4.gain(2, 0.25);	
-	mixer4.gain(3, 0.25);
-	mixer5.gain(0, 0.5);	//mixer to delay
+    mixer3.gain(0, 0.7); 	//wav sends
+	mixer3.gain(1, 0.7);
+	mixer4.gain(0, 0.5);	//chorus/flange mixer
+	mixer4.gain(1, 0.5);
+	mixer5.gain(0, 0.5);	//mix 2 wavs
 	mixer5.gain(1, 0.5);
-	mixer6.gain(0, 0.5);	//mix 1 and 2 to clean	
+	mixer6.gain(0, 0.5);	//clean-fx mix
 	mixer6.gain(1, 0.5);
-	mixer7.gain(0, 0.25);	//delay gains
-	mixer7.gain(1, 0.25);
-	mixer7.gain(2, 0.25);
-	mixer7.gain(3, 0.25);
-	mixer8.gain(0, 0.5);	//clean/fx mix clean
-	mixer8.gain(1, 0.5);	//fx mixer
     sgtl5000_1.enable();
     sgtl5000_1.volume(0.5);	   //master volume
-	setDelay(0);
+	//setMod(0);
+	flange1.begin(flange_length, FLANGE_DELAY_LENGTH, offset, depth, rate);
+	//chorus1.voices(n_chorus);
     analogReadAveraging(ANALOG_READ_AVERAGING);
     delay(1000);
 }
@@ -160,73 +168,18 @@ void setCrossfade(int mixKnob) {
   	// knob = 0 to 1023
   	float gain1 = (float)mixKnob / 1023.0;
   	float gain2 = 1.0 - gain1;
-  	mixer6.gain(0, gain2);
-  	mixer6.gain(1, gain1);
+  	mixer5.gain(0, gain2);
+  	mixer5.gain(1, gain1);
 }
 
-void setDelay(int delay_setting) {
+void setMod(int delay_setting) {
 	if ((last_delay_setting != delay_setting) && (delay_setting >= 0) && (delay_setting <= 11)) {
 	    last_delay_setting = delay_setting;
 		Serial.print("delay setting ");
 		Serial.println(delay_setting);
-		//delay speeds
-		delay1.delay(0, delay_0[delay_setting]);
-	  	delay1.delay(1, delay_1[delay_setting]);
-		delay1.delay(2, delay_2[delay_setting]);
-		delay1.delay(3, delay_3[delay_setting]);
-		//send 1
-		float gain_send1 = (float)delay_send_1[delay_setting] / 1023.0; 
-	  	mixer3.gain(0, gain_send1);
-		//send 1
-	  	float gain_send2 = (float)delay_send_1[delay_setting] / 1023.0; 
-	  	mixer3.gain(1, gain_send2);
-		//feedback
-	  	float gain_fb = (float)delay_fb[delay_setting] / 1023.0;	
-	  	mixer5.gain(1, gain_fb);
-		//fx-clean mix
-	  	float fx_gain = (float)fx_mix[delay_setting] / 1023.0;		
-	  	float clean_gain = 1.0 - fx_gain;
-	  	mixer6.gain(0, clean_gain);
-	  	mixer6.gain(1, fx_gain);
 	}
 }
-/*
-//Set delay times based on values in array                       !!!!!!!!!!!!!!!
-void setDelayTime(int delay_setting) {
-  if ((last_delay_setting != delay_setting) && (delay_setting >= 0) && (delay_setting <= 5)) {
-    last_delay_setting = delay_setting;
-	Serial.print("delay setting ");
-	Serial.println(delay_setting);
-    delay1.delay(0, delay_0[delay_setting]);
-	
-    //delay1.delay(1, delay_1[delay_setting]);
-    //delay1.delay(2, delay_2[delay_setting]);
-    //delay1.delay(3, delay_3[delay_setting]);
-  }
-}
 
-//Send wav 1 to delay
-void setDelaySendGain1(int level) {
-  	// wav 1 effect send
-  	float gain = (float)delay_send_1[level] / 1023.0;
-  	mixer3.gain(0, gain);
-}
-
-//Send wav 2 to delay
-void setDelaySendGain2(int level) {
-  	// wav 1 effect send
-  	float gain = (float)delay_send_2[level] / 1023.0;
-  	mixer3.gain(1, gain);
-}
-
-//delay fb
-void setDelayFb(int level) {
-  	// wav 1 effect send
-  	float gain = (float)delay_fb[level] / 1023.0;
-  	mixer5.gain(0, gain);
-  	mixer5.gain(1, gain);
-}
-*/
 //Encoder - wav player 1 track selection
 void checkEncoder0() {
     //read encoder, if different, increment up to limits
@@ -252,6 +205,7 @@ void checkEncoder0() {
 		}
 	}
 }
+
 //Encoder - wav player 2 track selection
 void checkEncoder1() {
     //read encoder, if different, increment up to limits
@@ -306,7 +260,6 @@ void checkEncoder2() {
 //======================LOOP=======================
 void loop() {
 //play wav 1
-	//track_1_level = encoderPosition[0];
 	if ( (playSdWav1.isPlaying() == false) || (track_1_level != last_track_1_level) ) {
 		if (track_1_level == 1) {
 			playSdWav1.play("DRONE1.WAV"); //play wav file
@@ -377,14 +330,15 @@ void loop() {
 	      	Serial.println("DRONE5.WAV");
 	    }
 	}
-	
+	//run commands
+	//volume
 	setMasterVolume(analogRead(2));
 	setCrossfade(analogRead(3));
+	//encoders
 	checkEncoder0();
 	checkEncoder1();
 	checkEncoder2();
-	setDelay(delay_setting);
-	//setDelaySendGain1(delay_setting);
-	//setDelaySendGain2(delay_setting);
+	//effect
+	//setMod(delay_setting);
 		
 }
